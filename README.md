@@ -1,41 +1,66 @@
 # Airdrop Quest Tracker
 
-Mini project untuk belajar Svelte dan SvelteKit lewat kasus nyata: dashboard sederhana untuk mencatat progress farming airdrop lintas chain.
+A dashboard to track your airdrop farming progress across different chains. Built with SvelteKit and Supabase.
 
 ## Tech Stack
-- SvelteKit + Vite
-- GSAP (animasi landing page)
-- WalletConnect v2 (opsional, koneksi dompet/injected)
-- LocalStorage (persisten tema, profil, catatan)
+- **Framework**: SvelteKit + Vite
+- **Database**: Supabase (PostgreSQL)
+- **Styling**: CSS Variables + Custom Design System
+- **Animations**: GSAP
+- **Wallet**: WalletConnect v2 + Injected Providers (MetaMask, etc.)
+- **Deployment**: Vercel
 
-## Fitur
-- Landing page interaktif dengan highlight produk.
-- Dashboard airdrop: filter chain/difficulty, pencarian, dan ringkasan progres.
-- Modal tambah airdrop custom (nama, slug, chain, difficulty, tags, quests).
-- Halaman detail airdrop dengan daftar quest.
-- Halaman profil dengan stats, notes/goals, dan onboarding singkat.
-- Tema terang/gelap yang tersimpan di browser.
-- Koneksi dompet (injected atau WalletConnect) dan persistent session lokal.
+## Features
+- 🚀 **Interactive Landing Page**: Smooth animations and product highlights.
+- 📊 **Airdrop Dashboard**: Filter by chain/difficulty, search, and track progress.
+- 💾 **Database Persistence**: All user data (profiles, quests, custom airdrops) is stored in Supabase.
+- 👤 **User Profiles**: Customizable profiles with roles, bios, and goals.
+- ➕ **Custom Airdrops**: Add any airdrop you're farming to your personal list.
+- 🌓 **Dark/Light Mode**: Persisted theme preference.
 
-## Menjalankan Proyek
-1) Pastikan Node.js 18+.
-2) Install dependencies:
+## Setup & Installation
+
+### 1. Prerequisites
+- Node.js 18+
+- A [Supabase](https://supabase.com) account
+- A [WalletConnect](https://cloud.walletconnect.com) Project ID
+
+### 2. Installation
 ```bash
+git clone https://github.com/yourusername/airdrop-tracker.git
+cd airdrop-tracker
 npm install
 ```
-3) (Opsional, hanya jika ingin fitur koneksi wallet) Buat `.env`:
-```bash
+
+### 3. Environment Variables
+Create a `.env` file in the root directory:
+
+```env
+# Supabase Configuration
+PUBLIC_SUPABASE_URL=your_supabase_project_url
+PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# WalletConnect
 VITE_WALLETCONNECT_PROJECT_ID=your_project_id
 ```
-4) Jalanan dev server:
+
+### 4. Database Setup
+1.  Create a new project in Supabase.
+2.  Go to the **SQL Editor**.
+3.  Run the contents of `schema.sql` to create the initial tables.
+4.  Run the contents of `migration.sql` to add the latest columns.
+
+### 5. Run Locally
 ```bash
 npm run dev -- --open
 ```
-5) Build produksi:
-```bash
-npm run build && npm run preview
-```
 
-## Catatan
-- Semua data (tema, profil, catatan) disimpan lokal di browser.
-- WalletConnect butuh `VITE_WALLETCONNECT_PROJECT_ID`; tanpa itu, koneksi dompet tidak tersedia.
+## Deployment (Vercel)
+
+1.  Push your code to GitHub.
+2.  Import the project in Vercel.
+3.  **Important**: Add the environment variables (`PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`, `VITE_WALLETCONNECT_PROJECT_ID`) in the Vercel Project Settings.
+4.  Deploy!
+
+## License
+MIT
