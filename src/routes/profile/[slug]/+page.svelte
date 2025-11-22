@@ -3,44 +3,23 @@
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { theme, toggleTheme } from '$lib/stores/themeStore';
-import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletModalOpen } from '$lib/stores/walletStore';
+  import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletModalOpen } from '$lib/stores/walletStore';
+  import { userStore, currentUserData } from '$lib/stores/userStore';
 
-    export let data;
-    const airdrops = data.airdrops ?? [];
-    const profileSlug = data.slug ?? 'farmer';
+  export let data;
+  // We ignore data.airdrops now as we use the store
+  const profileSlug = data.slug ?? 'farmer';
 
-  const defaultName = profileSlug
-    .split('-')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ') || 'Farmer';
+  // --- DERIVED DATA FROM STORE ---
+  $: userData = $currentUserData;
+  $: profile = userData?.profile || {};
+  $: airdrops = userData?.airdrops || [];
 
-  const defaultProfile = {
-    name: defaultName,
-    role: 'Airdrop Farmer',
-    wallet: '0x3a...f9c',
-    bio: 'Grinding L1, L2, and testnet airdrops.'
-  };
-
-  let chainFilter = 'All';
-  let goalsNotes = '';
-
-  let profile = structuredClone(defaultProfile);
-  let profileForm = structuredClone(defaultProfile);
-  let connectError = '';
-  let showOnboarding = false;
-  let onboardingDismissed = false;
-
-  // --- DERIVED STATS DARI AIRDROPS ---
-  const totalAirdrops = airdrops.length;
-  const totalQuests = airdrops.reduce((sum, a) => sum + a.quests.length, 0);
-
-  $: completedQuests = airdrops.reduce(
-    (sum, a) => sum + (a.completedQuests ?? 0),
-    0
-  );
-  $: completionRate =
-    totalQuests > 0 ? Math.round((completedQuests / totalQuests) * 100) : 0;
+  // --- DERIVED STATS ---
+  $: totalAirdrops = airdrops.length;
+  $: totalQuests = airdrops.reduce((sum, a) => sum + (a.quests?.length || 0), 0);
+  $: completedQuests = airdrops.reduce((sum, a) => sum + (a.completedQuests || 0), 0);
+  $: completionRate = totalQuests > 0 ? Math.round((completedQuests / totalQuests) * 100) : 0;
   $: chainsActive = new Set(airdrops.map((a) => a.chain)).size;
 
   // --- BY CHAIN STATS ---
@@ -48,8 +27,7 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
   $: chainStats = chainOrder.map((chain) => {
     const list = airdrops.filter((a) => a.chain === chain);
     const count = list.length;
-    const percent =
-      totalAirdrops > 0 ? Math.round((count / totalAirdrops) * 100) : 0;
+    const percent = totalAirdrops > 0 ? Math.round((count / totalAirdrops) * 100) : 0;
     return { chain, count, percent };
   });
 
@@ -61,36 +39,41 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
   }));
 
   // --- FILTER ACTIVE AIRDROPS ---
-  $: filteredAirdrops =
-    chainFilter === 'All'
-      ? airdrops
-      : airdrops.filter((a) => a.chain === chainFilter);
+  let chainFilter = 'All';
+  $: filteredAirdrops = chainFilter === 'All' ? airdrops : airdrops.filter((a) => a.chain === chainFilter);
 
-  // --- NOTES LOCALSTORAGE ---
-  $: profileStorageKey = `profile-data-${profileSlug}`;
-  $: notesStorageKey = `profile-goals-notes-${profileSlug}`;
-  $: onboardingKey = `profile-onboarding-dismissed-${profileSlug}`;
+  // --- FORM STATE ---
+  let profileForm = {
+    name: '',
+    role: '',
+    wallet: '',
+    bio: ''
+  };
 
-  onMount(() => {
-    if (!browser) return;
-    loadProfile();
-    
-    const savedNotes = localStorage.getItem(notesStorageKey);
-    if (savedNotes) goalsNotes = savedNotes;
-  });
-
-  // Reactive load of onboarding status when key changes
-  $: if (browser && onboardingKey) {
-    const dismissedFlag = localStorage.getItem(onboardingKey);
-    // Only update if we haven't already dismissed it in this session to avoid flickering
-    if (dismissedFlag === '1') {
-        onboardingDismissed = true;
-    }
+  // Sync form with profile when profile loads/changes
+  $: if (profile) {
+    profileForm = {
+      name: profile.name || '',
+      role: profile.role || 'Airdrop Farmer',
+      wallet: profile.wallet || '',
+      bio: profile.bio || ''
+    };
   }
 
-  $: if (browser) {
-    // auto-save tiap kali goalsNotes berubah
-    localStorage.setItem(notesStorageKey, goalsNotes);
+  let connectError = '';
+  let showOnboarding = false;
+
+  // --- ONBOARDING LOGIC ---
+  $: if (userData && !userData.onboardingDismissed) {
+      const needsDetails = !profile.name || profile.name === 'Farmer' || !profile.bio;
+      if (needsDetails) {
+          showOnboarding = true;
+      } else {
+          // If they have details but flag is false, set it to true
+          userStore.dismissOnboarding($walletAddress);
+      }
+  } else {
+      showOnboarding = false;
   }
 
   function formatAddress(address) {
@@ -106,7 +89,6 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
     connectError = '';
     try {
       await disconnectWallet();
-      deleteProfile();
       goto('/profile/farmer');
     } catch (error) {
       connectError = error?.message ?? 'Failed to disconnect wallet';
@@ -114,61 +96,40 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
     }
   }
 
-  function loadProfile() {
-    if (!browser) return;
-    const stored = localStorage.getItem(profileStorageKey);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        profile = sanitizeProfile({ ...defaultProfile, ...parsed });
-      } catch {
-        profile = structuredClone(defaultProfile);
-      }
-    } else {
-      profile = structuredClone(defaultProfile);
-    }
-    profileForm = structuredClone(profile);
-  }
-
-  function sanitizeProfile(data) {
-    return {
-      name: data.name?.trim() || defaultProfile.name,
-      role: data.role?.trim() || defaultProfile.role,
-      wallet: data.wallet?.trim() || defaultProfile.wallet,
-      bio: data.bio?.trim() || defaultProfile.bio
-    };
-  }
-
   function saveProfile(event) {
     event?.preventDefault?.();
-    profile = sanitizeProfile(profileForm);
-    profileForm = structuredClone(profile);
-    if (!needsProfileDetails(profile)) {
-      onboardingDismissed = true;
-      showOnboarding = false;
-      if (browser) {
-        localStorage.setItem(onboardingKey, '1');
-      }
-    }
-    if (browser) {
-      localStorage.setItem(profileStorageKey, JSON.stringify(profile));
+    if (!$walletAddress) return;
+
+    userStore.updateProfile($walletAddress, {
+        name: profileForm.name,
+        role: profileForm.role,
+        bio: profileForm.bio
+        // Wallet is managed by connection, usually shouldn't be editable manually to something else
+    });
+
+    if (showOnboarding) {
+        userStore.dismissOnboarding($walletAddress);
+        showOnboarding = false;
     }
   }
 
   function resetProfileForm() {
-    profileForm = structuredClone(profile);
+    if (profile) {
+        profileForm = {
+            name: profile.name || '',
+            role: profile.role || 'Airdrop Farmer',
+            wallet: profile.wallet || '',
+            bio: profile.bio || ''
+        };
+    }
   }
 
   function deleteProfile() {
-    profile = structuredClone(defaultProfile);
-    profileForm = structuredClone(defaultProfile);
-    // Do not reset onboardingDismissed here, user might want to keep it dismissed
-    // or if they really want to reset, they can clear storage.
-    // But for now, let's keep it consistent with "new profile" feeling
-    onboardingDismissed = false; 
-    if (browser) {
-      localStorage.removeItem(profileStorageKey);
-      localStorage.removeItem(onboardingKey);
+    if (!$walletAddress) return;
+    if (confirm('Are you sure you want to reset your profile? This will clear your progress.')) {
+        userStore.resetUser($walletAddress);
+        // Re-init to get default state
+        userStore.initUser($walletAddress);
     }
   }
 
@@ -182,62 +143,14 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
   }
 
   function closeOnboarding() {
+    if (!$walletAddress) return;
+    userStore.dismissOnboarding($walletAddress);
     showOnboarding = false;
-    onboardingDismissed = true;
-    if (browser) {
-      localStorage.setItem(onboardingKey, '1');
-    }
   }
 
   function handleOnboardingSubmit(event) {
     saveProfile(event);
-    closeOnboarding();
   }
-
-  function needsProfileDetails(currentProfile) {
-    const trimmedName = currentProfile.name?.trim() ?? '';
-    const trimmedWallet = currentProfile.wallet?.trim().toLowerCase() ?? '';
-    if (!trimmedName) return true;
-    if (trimmedName === defaultName) return true;
-    if (trimmedWallet && trimmedName.toLowerCase() === trimmedWallet) return true;
-    return false;
-  }
-
-  $: if ($walletAddress) {
-    const normalized = $walletAddress.toLowerCase();
-    if (profile.wallet !== normalized) {
-      profile = { ...profile, wallet: normalized };
-      if (browser) {
-        localStorage.setItem(profileStorageKey, JSON.stringify(profile));
-      }
-    }
-    if (profileForm.wallet !== normalized) {
-      profileForm = { ...profileForm, wallet: normalized };
-    }
-    const profileNeedsDetails = needsProfileDetails(profile);
-    
-    // Only show if NOT dismissed AND needs details
-    if (!onboardingDismissed && profileNeedsDetails) {
-      showOnboarding = true;
-    } else if (!profileNeedsDetails) {
-      // If details are filled, ensure we mark as dismissed
-      showOnboarding = false;
-      onboardingDismissed = true;
-      if (browser) {
-        localStorage.setItem(onboardingKey, '1');
-      }
-    }
-  } else {
-    showOnboarding = false;
-    // REMOVED: onboardingDismissed = false; 
-    // We shouldn't reset this just because wallet disconnected.
-  }
-
-  $: displayName = profile.name || defaultProfile.name;
-  $: displayRole = profile.role || defaultProfile.role;
-  $: displayBio = profile.bio || defaultProfile.bio;
-  $: displayWallet = profile.wallet || defaultProfile.wallet;
-  $: profileInitials = getInitials(displayName);
 
   // helper label difficulty → teks
   const difficultyLabel = {
@@ -245,17 +158,26 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
     Medium: 'Medium',
     High: 'High'
   };
+
+  const ROLES = [
+      'Airdrop Farmer',
+      'DeFi Degen',
+      'NFT Collector',
+      'Governance Voter',
+      'Developer',
+      'Researcher'
+  ];
 </script>
 
 <svelte:head>
-  <title>Farmer Profile - Airdrop Quest Tracker</title>
+  <title>{profile.name || 'Farmer'} Profile - Airdrop Quest Tracker</title>
 </svelte:head>
 
 <!-- Header -->
 <header class="header">
   <div class="header-container">
     <div class="header-left">
-      <a href="/" class="logo">
+      <a href="/" class="logo" aria-label="Go to home">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
@@ -314,11 +236,11 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
   <section class="profile-card">
     <div class="profile-content">
       <div class="profile-left">
-        <div class="avatar">{profileInitials}</div>
+        <div class="avatar">{getInitials(profile.name || 'Farmer')}</div>
         <div class="profile-info">
-          <h2>{displayName}</h2>
-          <p class="profile-role">{displayRole}</p>
-          <p class="profile-bio">{displayBio}</p>
+          <h2>{profile.name || 'Farmer'}</h2>
+          <p class="profile-role">{profile.role || 'Airdrop Farmer'}</p>
+          <p class="profile-bio">{profile.bio || 'No bio yet.'}</p>
         </div>
       </div>
 
@@ -357,16 +279,14 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
                 <span class="chain-count">{cs.count}</span>
               </div>
               <div class="progress-bar">
-                <div
-                  class="progress-fill {cs.chain === 'HyperEVM'
+                <div class="progress-fill {cs.chain === 'HyperEVM'
                     ? 'progress-fuchsia'
                     : cs.chain === 'L2'
                     ? 'progress-purple'
                     : cs.chain === 'Testnet'
                     ? 'progress-blue'
                     : 'progress-cyan'}"
-                  style={`width: ${cs.percent}%`}
-                />
+                  style={`width: ${cs.percent}%`}></div>
               </div>
             </div>
           {/if}
@@ -385,8 +305,7 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
                 ? 'difficulty-low'
                 : ds.difficulty === 'Medium'
                 ? 'difficulty-medium'
-                : 'difficulty-high'}"
-            />
+                : 'difficulty-high'}"></div>
             <span class="difficulty-label">{difficultyLabel[ds.difficulty]}</span>
             <span class="difficulty-value">{ds.count} airdrops</span>
           </div>
@@ -394,29 +313,7 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
       </div>
     </div>
 
-    <!-- Weekly Activity (dummy / static for now) -->
-    <div class="stat-card">
-      <h3>Weekly Activity</h3>
-      <div class="activity-chart">
-        <div class="activity-bar" style="height: 60%"></div>
-        <div class="activity-bar" style="height: 45%"></div>
-        <div class="activity-bar" style="height: 80%"></div>
-        <div class="activity-bar" style="height: 35%"></div>
-        <div class="activity-bar" style="height: 70%"></div>
-        <div class="activity-bar" style="height: 90%"></div>
-        <div class="activity-bar" style="height: 55%"></div>
-      </div>
-    </div>
 
-    <!-- Current Streak (dummy value) -->
-    <div class="stat-card">
-      <h3>Current Streak</h3>
-      <div class="streak-display">
-        <div class="streak-icon">🔥</div>
-        <div class="streak-number">7</div>
-        <div class="streak-label">days active</div>
-      </div>
-    </div>
   </section>
 
   <!-- Active Airdrops & Preferences Layout -->
@@ -463,8 +360,7 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
                   <div class="progress-bar">
                     <div
                       class="progress-fill progress-cyan"
-                      style={`width: ${progress}%`}
-                    />
+                      style={`width: ${progress}%`}></div>
                   </div>
                 </div>
               </div>
@@ -484,9 +380,9 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
         <div class="notes-card">
           <textarea
             class="notes-textarea"
-            bind:value={goalsNotes}
-            placeholder="Write your farming plan, priority airdrops, or reminders here..."
-          />
+            value={profile.goals || ''}
+            on:input={(e) => userStore.updateProfile($walletAddress, { goals: e.target.value })}
+            placeholder="Write your farming plan, priority airdrops, or reminders here..."></textarea>
         </div>
       </div>
 
@@ -501,12 +397,16 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
 
             <div class="form-group">
               <label class="form-label" for="profile-role">Role</label>
-              <input id="profile-role" class="form-input" bind:value={profileForm.role} placeholder="e.g., Airdrop Farmer" />
+              <select id="profile-role" class="form-select" bind:value={profileForm.role}>
+                  {#each ROLES as role}
+                      <option value={role}>{role}</option>
+                  {/each}
+              </select>
             </div>
 
             <div class="form-group">
               <label class="form-label" for="profile-wallet">Wallet</label>
-              <input id="profile-wallet" class="form-input" bind:value={profileForm.wallet} placeholder="0x..." />
+              <input id="profile-wallet" class="form-input" value={profile.wallet} disabled />
             </div>
 
             <div class="form-group">
@@ -523,7 +423,7 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
             <div class="profile-form-actions">
               <button class="btn btn-primary" type="submit">Save Profile</button>
               <button class="btn-secondary" type="button" on:click={resetProfileForm}>Cancel</button>
-              <button class="btn-danger" type="button" on:click={deleteProfile}>Delete</button>
+              <button class="btn-danger" type="button" on:click={deleteProfile}>Reset Profile</button>
             </div>
           </form>
         </div>
@@ -549,7 +449,11 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletM
         </div>
         <div class="form-group">
           <label class="form-label" for="onboarding-role">Role</label>
-          <input id="onboarding-role" class="form-input" bind:value={profileForm.role} placeholder="e.g., L2 Grinder" required />
+          <select id="onboarding-role" class="form-select" bind:value={profileForm.role} required>
+              {#each ROLES as role}
+                  <option value={role}>{role}</option>
+              {/each}
+          </select>
         </div>
         <div class="form-group">
           <label class="form-label" for="onboarding-bio">Bio</label>

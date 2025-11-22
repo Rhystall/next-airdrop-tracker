@@ -12,7 +12,7 @@ export const airdrop = [
         ],
         "description": "High potential perp DEX airdrop. Focus on volume and consistency.",
         "link": "https://app.hyperliquid.xyz",
-        "completedQuests": 2,
+        "completedQuests": 0,
         "estimatedRisk": "Medium",
         "avgTimePerWeek": "2-3 hours"
     },
@@ -29,7 +29,7 @@ export const airdrop = [
         ],
         "description": "New high performance L1. Farm testnet early.",
         "link": "https://www.monad.xyz",
-        "completedQuests": 3,
+        "completedQuests": 0,
         "estimatedRisk": "Low",
         "avgTimePerWeek": "1 hour"
     },
@@ -48,7 +48,7 @@ export const airdrop = [
         ],
         "description": "Proof of Liquidity L1. Early testnet participation recommended.",
         "link": "https://artio.berachain.com",
-        "completedQuests": 4,
+        "completedQuests": 0,
         "estimatedRisk": "Low",
         "avgTimePerWeek": "1-2 hours"
     },
@@ -66,7 +66,7 @@ export const airdrop = [
         ],
         "description": "zkEVM rollup with session-based rewards. Consistency is key.",
         "link": "https://scroll.io",
-        "completedQuests": 1,
+        "completedQuests": 0,
         "estimatedRisk": "Medium",
         "avgTimePerWeek": "3-4 hours"
     },
@@ -85,7 +85,7 @@ export const airdrop = [
         ],
         "description": "ConsenSys zkEVM with voyage campaign. Multiple waves required.",
         "link": "https://linea.build",
-        "completedQuests": 2,
+        "completedQuests": 0,
         "estimatedRisk": "High",
         "avgTimePerWeek": "4-5 hours"
     },
@@ -104,7 +104,7 @@ export const airdrop = [
         ],
         "description": "Established zkEVM L2. Focus on diverse protocol usage.",
         "link": "https://zksync.io",
-        "completedQuests": 3,
+        "completedQuests": 0,
         "estimatedRisk": "Medium",
         "avgTimePerWeek": "3 hours"
     }

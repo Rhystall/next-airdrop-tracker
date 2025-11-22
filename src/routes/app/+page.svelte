@@ -2,9 +2,19 @@
     import { goto } from '$app/navigation';
     import { theme, toggleTheme } from '$lib/stores/themeStore';
     import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletModalOpen } from '$lib/stores/walletStore';
-    export let data;
+    import { userStore, currentUserData } from '$lib/stores/userStore';
 
-    let airdrops = structuredClone(data.airdrop);
+    export let data;
+    // Use data.airdrop as a fallback/template if user has no data yet, 
+    // but primarily we want the user's airdrops from store.
+    
+    $: userData = $currentUserData;
+    $: userAirdrops = userData?.airdrops || [];
+    
+    // If user is not connected, show default template data (from load)
+    // If connected, show user's data
+    $: displayAirdrops = $walletAddress ? userAirdrops : (data.airdrop || []);
+
     const defaultProfileSlug = 'farmer';
     $: profileSlug = $walletAddress ? $walletAddress.toLowerCase() : defaultProfileSlug;
 
@@ -28,7 +38,7 @@
     };
 
     // airdrop setelah difilter
-  $: filteredAirdrops = airdrops.filter((airdrop) => {
+  $: filteredAirdrops = displayAirdrops.filter((airdrop) => {
     const matchesChain =
       filters.chain === "All" || airdrop.chain === filters.chain;
     const matchesDifficulty =
@@ -44,12 +54,12 @@
   });
 
   // hitung summary
-  $: totalAirdrops = airdrops.length;
-  $: totalQuests = airdrops.reduce(
+  $: totalAirdrops = displayAirdrops.length;
+  $: totalQuests = displayAirdrops.reduce(
     (sum, a) => sum + (a.quests?.length ?? 0),
     0
   );
-  $: completedQuests = airdrops.reduce(
+  $: completedQuests = displayAirdrops.reduce(
     (sum, a) => sum + (a.completedQuests ?? 0),
     0
   );
@@ -111,7 +121,15 @@
       completedQuests: 0
     };
 
-    airdrops = [...airdrops, newAirdrop];
+    if ($walletAddress) {
+        userStore.addAirdrop($walletAddress, newAirdrop);
+    } else {
+        // Fallback for non-connected state (visual only, won't persist well)
+        // But ideally we prompt them to connect.
+        alert("Please connect wallet to add airdrops.");
+        return;
+    }
+    
     closeModal();
   }
 
@@ -200,7 +218,7 @@
           </svg>
         {/if}
       </button>
-      <button class="profile-circle" type="button" on:click={goToProfile}>
+      <button class="profile-circle" type="button" on:click={goToProfile} aria-label="Go to profile">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -307,7 +325,13 @@
         </div>
       {:else}
         {#each airdropsWithStats as airdrop (airdrop.slug)}
-          <div class="airdrop-card" on:click={() => goToDetail(airdrop.slug)}>
+          <div 
+            class="airdrop-card" 
+            on:click={() => goToDetail(airdrop.slug)}
+            role="button"
+            tabindex="0"
+            on:keydown={(e) => e.key === 'Enter' && goToDetail(airdrop.slug)}
+          >
             <div class="card-header">
               <div class="card-header-left">
                 <h3 class="card-title">{airdrop.name}</h3>

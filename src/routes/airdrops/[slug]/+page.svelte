@@ -3,76 +3,75 @@
     import { onMount } from 'svelte';
     import { browser } from '$app/environment';
     import { theme, toggleTheme } from '$lib/stores/themeStore';
+    import { walletAddress } from '$lib/stores/walletStore';
+    import { userStore, currentUserData } from '$lib/stores/userStore';
 
     export let data;
-    const airdrop = data.airdrop;
+    // Base airdrop data from load (template)
+    const baseAirdrop = data.airdrop;
 
+    // Derived user data
+    $: userData = $currentUserData;
+    $: userAirdrop = userData?.airdrops?.find(a => a.slug === baseAirdrop.slug);
+    
+    // If connected and user has data, use it. Otherwise fall back to base.
+    // We merge baseAirdrop to ensure we have static fields like name, description, etc.
+    // if they aren't fully in the store (though store should have a clone).
+    $: activeAirdrop = userAirdrop ? { ...baseAirdrop, ...userAirdrop } : baseAirdrop;
 
-  const NOTES_KEY = `notes-${airdrop.slug}`;
-  const PROGRESS_KEY = `progress-${airdrop.slug}`;
+    // State for quests
+    $: completedIndices = activeAirdrop.completedIndices || [];
+    $: completedSet = new Set(completedIndices);
+    
+    // State for notes
+    $: notes = activeAirdrop.notes || '';
 
-  // set berisi index quest yang sudah selesai
-  let completedSet = new Set();
-  let notes = '';
+    const totalQuests = baseAirdrop.quests.length;
 
-  const totalQuests = airdrop.quests.length;
+    // derived values
+    $: completedCount = completedSet.size;
+    $: progress = totalQuests
+      ? Math.round((completedCount / totalQuests) * 100)
+      : 0;
 
-  // derived values (otomatis ke-update kalau completedSet berubah)
-  $: completedCount = completedSet.size;
-  $: progress = totalQuests
-    ? Math.round((completedCount / totalQuests) * 100)
-    : 0;
+    function toggleQuest(index) {
+      if (!$walletAddress) {
+          alert('Please connect your wallet to save progress.');
+          return;
+      }
 
-  onMount(() => {
-    if (!browser) return;
+      const updated = new Set(completedSet);
+      if (updated.has(index)) {
+        updated.delete(index);
+      } else {
+        updated.add(index);
+      }
+      
+      // Update store
+      const newIndices = [...updated];
+      userStore.updateAirdrop($walletAddress, baseAirdrop.slug, {
+          completedIndices: newIndices,
+          completedQuests: newIndices.length
+      });
+    }
 
-    // load progress dari localStorage
-    try {
-      const storedProgress = localStorage.getItem(PROGRESS_KEY);
-      if (storedProgress) {
-        const parsed = JSON.parse(storedProgress);
-        if (Array.isArray(parsed)) {
-          completedSet = new Set(parsed);
+    function updateNotes(event) {
+        const newNotes = event.target.value;
+        notes = newNotes; // Optimistic update
+        if ($walletAddress) {
+            userStore.updateAirdrop($walletAddress, baseAirdrop.slug, {
+                notes: newNotes
+            });
         }
-      }
-
-      const storedNotes = localStorage.getItem(NOTES_KEY);
-      if (storedNotes !== null) {
-        notes = storedNotes;
-      }
-    } catch (error) {
-      console.error('Failed to read local data', error);
     }
-  });
 
-  function toggleQuest(index) {
-    const updated = new Set(completedSet);
-    if (updated.has(index)) {
-      updated.delete(index);
-    } else {
-      updated.add(index);
+    function goBack() {
+      goto('/');
     }
-    completedSet = updated;
-    saveProgress(updated);
-  }
-
-  function saveProgress(set = completedSet) {
-    if (!browser) return;
-    localStorage.setItem(PROGRESS_KEY, JSON.stringify([...set]));
-  }
-
-  // setiap notes berubah → simpan
-  $: if (browser) {
-    localStorage.setItem(NOTES_KEY, notes);
-  }
-
-  function goBack() {
-    goto('/');
-  }
 </script>
 
 <svelte:head>
-  <title>Airdrop Detail - {airdrop.name}</title>
+  <title>Airdrop Detail - {activeAirdrop.name}</title>
 </svelte:head>
 
 <!-- Header -->
@@ -101,7 +100,7 @@
       <div class="breadcrumb">
         <span>Home</span>
         <span>/</span>
-        <span class="breadcrumb-current">{airdrop.name}</span>
+        <span class="breadcrumb-current">{activeAirdrop.name}</span>
       </div>
     </div>
 
@@ -129,19 +128,19 @@
   <div class="header-card">
     <div class="header-content">
       <div class="header-left">
-        <h1>{airdrop.name}</h1>
+        <h1>{activeAirdrop.name}</h1>
 
         <div class="badges">
-          <span class={"badge badge-chain-" + airdrop.chain}>{airdrop.chain}</span>
-          <span class={"badge badge-difficulty-" + airdrop.difficulty}>
-            {airdrop.difficulty}
+          <span class={"badge badge-chain-" + activeAirdrop.chain}>{activeAirdrop.chain}</span>
+          <span class={"badge badge-difficulty-" + activeAirdrop.difficulty}>
+            {activeAirdrop.difficulty}
           </span>
         </div>
 
-        <p class="description">{airdrop.description}</p>
+        <p class="description">{activeAirdrop.description}</p>
 
         <div class="tags">
-          {#each airdrop.tags as tag}
+          {#each activeAirdrop.tags as tag}
             <span class="tag">{tag}</span>
           {/each}
         </div>
@@ -150,7 +149,7 @@
       <div class="header-actions">
         <a
           class="btn btn-primary"
-          href={airdrop.link}
+          href={activeAirdrop.link}
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -174,7 +173,7 @@
 
         <a
           class="btn btn-outline"
-          href={airdrop.link}
+          href={activeAirdrop.link}
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -234,7 +233,7 @@
         </div>
         <div>
           <p class="stat-label">Risk</p>
-          <p class="stat-value">{airdrop.estimatedRisk ?? airdrop.difficulty}</p>
+          <p class="stat-value">{activeAirdrop.estimatedRisk ?? activeAirdrop.difficulty}</p>
         </div>
       </div>
     </div>
@@ -253,7 +252,7 @@
         </div>
         <div>
           <p class="stat-label">Time/Week</p>
-          <p class="stat-value">{airdrop.avgTimePerWeek ?? '2–3 hrs'}</p>
+          <p class="stat-value">{activeAirdrop.avgTimePerWeek ?? '2–3 hrs'}</p>
         </div>
       </div>
     </div>
@@ -272,7 +271,7 @@
         </div>
         <div>
           <p class="stat-label">Chain</p>
-          <p class="stat-value">{airdrop.chain}</p>
+          <p class="stat-value">{activeAirdrop.chain}</p>
         </div>
       </div>
     </div>
@@ -289,13 +288,23 @@
     </div>
 
     <div class="quest-list">
-      {#each airdrop.quests as quest, index}
+      {#each activeAirdrop.quests as quest, index}
         <div class={"quest-item " + (completedSet.has(index) ? 'completed' : '')}>
           <div
             class={"checkbox " + (completedSet.has(index) ? 'checked' : '')}
             on:click|stopPropagation={() => toggleQuest(index)}
+            role="button"
+            tabindex="0"
+            on:keydown={(e) => e.key === 'Enter' && toggleQuest(index)}
+            aria-label={`Toggle quest: ${quest}`}
           ></div>
-          <div class="quest-text" on:click={() => toggleQuest(index)}>
+          <div 
+            class="quest-text" 
+            on:click={() => toggleQuest(index)}
+            role="button"
+            tabindex="0"
+            on:keydown={(e) => e.key === 'Enter' && toggleQuest(index)}
+          >
             {quest}
           </div>
         </div>
@@ -309,7 +318,8 @@
     <textarea
       class="notes-textarea"
       placeholder="Add your notes, strategies, or reminders here..."
-      bind:value={notes}
+      value={notes}
+      on:input={updateNotes}
     ></textarea>
   </div>
 </main>
