@@ -1,7 +1,7 @@
 <script>
     import { goto } from '$app/navigation';
     import { theme, toggleTheme } from '$lib/stores/themeStore';
-    import { walletAddress, connectWallet, disconnectWallet, isConnecting } from '$lib/stores/walletStore';
+    import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletModalOpen } from '$lib/stores/walletStore';
     export let data;
 
     let airdrops = structuredClone(data.airdrop);
@@ -127,13 +127,7 @@
 
   async function handleConnectWallet() {
     connectError = '';
-    try {
-      await connectWallet();
-      goto(`/profile/${profileSlug}`);
-    } catch (error) {
-      connectError = error?.message ?? 'Failed to connect wallet';
-      console.error(error);
-    }
+    isWalletModalOpen.set(true);
   }
 
   async function handleDisconnectWallet() {

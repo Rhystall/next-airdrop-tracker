@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { theme, toggleTheme } from '$lib/stores/themeStore';
-import { walletAddress, connectWallet, disconnectWallet, isConnecting } from '$lib/stores/walletStore';
+import { walletAddress, connectWallet, disconnectWallet, isConnecting, isWalletModalOpen } from '$lib/stores/walletStore';
 
     export let data;
     const airdrops = data.airdrops ?? [];
@@ -67,19 +67,26 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting } from '$l
       : airdrops.filter((a) => a.chain === chainFilter);
 
   // --- NOTES LOCALSTORAGE ---
-  const profileStorageKey = `profile-data-${profileSlug}`;
-  const notesStorageKey = `profile-goals-notes-${profileSlug}`;
-  const onboardingKey = `profile-onboarding-dismissed-${profileSlug}`;
+  $: profileStorageKey = `profile-data-${profileSlug}`;
+  $: notesStorageKey = `profile-goals-notes-${profileSlug}`;
+  $: onboardingKey = `profile-onboarding-dismissed-${profileSlug}`;
 
   onMount(() => {
     if (!browser) return;
     loadProfile();
-    const dismissedFlag = localStorage.getItem(onboardingKey);
-    onboardingDismissed = dismissedFlag === '1';
-
+    
     const savedNotes = localStorage.getItem(notesStorageKey);
     if (savedNotes) goalsNotes = savedNotes;
   });
+
+  // Reactive load of onboarding status when key changes
+  $: if (browser && onboardingKey) {
+    const dismissedFlag = localStorage.getItem(onboardingKey);
+    // Only update if we haven't already dismissed it in this session to avoid flickering
+    if (dismissedFlag === '1') {
+        onboardingDismissed = true;
+    }
+  }
 
   $: if (browser) {
     // auto-save tiap kali goalsNotes berubah
@@ -92,15 +99,7 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting } from '$l
 
   async function handleConnectWallet() {
     connectError = '';
-    try {
-      await connectWallet();
-      if ($walletAddress) {
-        goto(`/profile/${$walletAddress.toLowerCase()}`);
-      }
-    } catch (error) {
-      connectError = error?.message ?? 'Failed to connect wallet';
-      console.error(error);
-    }
+    isWalletModalOpen.set(true);
   }
 
   async function handleDisconnectWallet() {
@@ -163,7 +162,10 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting } from '$l
   function deleteProfile() {
     profile = structuredClone(defaultProfile);
     profileForm = structuredClone(defaultProfile);
-    onboardingDismissed = false;
+    // Do not reset onboardingDismissed here, user might want to keep it dismissed
+    // or if they really want to reset, they can clear storage.
+    // But for now, let's keep it consistent with "new profile" feeling
+    onboardingDismissed = false; 
     if (browser) {
       localStorage.removeItem(profileStorageKey);
       localStorage.removeItem(onboardingKey);
@@ -213,9 +215,12 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting } from '$l
       profileForm = { ...profileForm, wallet: normalized };
     }
     const profileNeedsDetails = needsProfileDetails(profile);
+    
+    // Only show if NOT dismissed AND needs details
     if (!onboardingDismissed && profileNeedsDetails) {
       showOnboarding = true;
     } else if (!profileNeedsDetails) {
+      // If details are filled, ensure we mark as dismissed
       showOnboarding = false;
       onboardingDismissed = true;
       if (browser) {
@@ -224,7 +229,8 @@ import { walletAddress, connectWallet, disconnectWallet, isConnecting } from '$l
     }
   } else {
     showOnboarding = false;
-    onboardingDismissed = false;
+    // REMOVED: onboardingDismissed = false; 
+    // We shouldn't reset this just because wallet disconnected.
   }
 
   $: displayName = profile.name || defaultProfile.name;

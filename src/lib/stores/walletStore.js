@@ -11,6 +11,7 @@ const initialConnectionType = browser ? localStorage.getItem(CONNECTION_KEY) ?? 
 export const walletAddress = writable(initialAddress);
 export const isConnecting = writable(false);
 export const connectionType = writable(initialConnectionType);
+export const isWalletModalOpen = writable(false);
 
 let walletConnectProvider;
 let injectedListenersRegistered = false;
@@ -33,29 +34,29 @@ async function ensureWalletConnectProvider() {
 			icons: ['https://avatars.githubusercontent.com/u/37784886?s=200&v=4']
 		};
 
-	walletConnectProvider = await EthereumProvider.init({
-		projectId: PROJECT_ID,
-		showQrModal: true,
-		chains: [1],
-		optionalChains: [10, 137, 8453, 42161, 59144],
+		walletConnectProvider = await EthereumProvider.init({
+			projectId: PROJECT_ID,
+			showQrModal: true,
+			chains: [1],
+			optionalChains: [10, 137, 8453, 42161, 59144],
 			methods: ['eth_sendTransaction', 'personal_sign', 'eth_signTypedData', 'eth_sign'],
 			optionalMethods: ['eth_signTypedData_v4'],
 			events: ['accountsChanged', 'chainChanged', 'disconnect'],
-		metadata
-	});
+			metadata
+		});
 
-	walletConnectProvider.on('accountsChanged', handleAccountsChanged);
-	walletConnectProvider.on('disconnect', () => {
-		walletAddress.set('');
-		connectionType.set('');
-	});
-}
+		walletConnectProvider.on('accountsChanged', handleAccountsChanged);
+		walletConnectProvider.on('disconnect', () => {
+			walletAddress.set('');
+			connectionType.set('');
+		});
+	}
 
-if (!walletConnectProvider.session) {
-	await walletConnectProvider.connect();
-}
+	if (!walletConnectProvider.session) {
+		await walletConnectProvider.connect();
+	}
 
-return walletConnectProvider;
+	return walletConnectProvider;
 }
 
 function getInjectedProvider() {
@@ -72,23 +73,25 @@ function getInjectedProvider() {
 	return ethereum;
 }
 
-async function requestAccounts() {
-	const injected = getInjectedProvider();
-	if (injected) {
+async function requestAccounts(providerType) {
+	if (providerType === 'injected') {
+		const injected = getInjectedProvider();
+		if (!injected) throw new Error('No injected wallet found');
 		const accounts = await injected.request({ method: 'eth_requestAccounts' });
 		return { accounts, type: 'injected' };
+	} else if (providerType === 'walletconnect') {
+		const provider = await ensureWalletConnectProvider();
+		const accounts = await provider.request({ method: 'eth_requestAccounts' });
+		return { accounts, type: 'walletconnect' };
 	}
-
-	const provider = await ensureWalletConnectProvider();
-	const accounts = await provider.request({ method: 'eth_requestAccounts' });
-	return { accounts, type: 'walletconnect' };
+	throw new Error('Invalid provider type');
 }
 
-export async function connectWallet() {
+export async function connectWallet(providerType) {
 	if (!browser) return;
 	isConnecting.set(true);
 	try {
-		const { accounts, type } = await requestAccounts();
+		const { accounts, type } = await requestAccounts(providerType);
 		handleAccountsChanged(accounts);
 		connectionType.set(type);
 	} finally {
@@ -99,9 +102,8 @@ export async function connectWallet() {
 export async function disconnectWallet() {
 	if (!browser) return;
 	const injected = getInjectedProvider();
-	if (injected?.disconnect) {
-		await injected.disconnect();
-	}
+	// Note: Injected providers usually don't support programmatic disconnect
+	// but we can clear our local state.
 
 	if (walletConnectProvider) {
 		try {
@@ -114,6 +116,8 @@ export async function disconnectWallet() {
 
 	connectionType.set('');
 	walletAddress.set('');
+	localStorage.removeItem(STORAGE_KEY);
+	localStorage.removeItem(CONNECTION_KEY);
 }
 
 if (browser) {
@@ -137,12 +141,18 @@ if (browser) {
 
 	connectionType.subscribe(persistConnectionType);
 
-	const injected = getInjectedProvider();
-	if (initialConnectionType === 'injected' && injected?.selectedAddress) {
-		handleAccountsChanged([injected.selectedAddress]);
-	}
-
-	if (initialConnectionType === 'walletconnect') {
+	// Only auto-reconnect if we have a saved connection type
+	if (initialConnectionType === 'injected') {
+		const injected = getInjectedProvider();
+		if (injected?.selectedAddress) {
+			handleAccountsChanged([injected.selectedAddress]);
+		} else {
+			// If we expected injected but it's not ready/connected, 
+			// we might want to clear state or just wait. 
+			// For now, let's just clear if it's definitely not there?
+			// Actually, better to leave it be, user might need to unlock.
+		}
+	} else if (initialConnectionType === 'walletconnect') {
 		ensureWalletConnectProvider().catch((error) => {
 			console.error('Failed to restore WalletConnect session', error);
 			connectionType.set('');
